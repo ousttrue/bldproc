@@ -4,6 +4,7 @@ import urllib.request
 import subprocess
 import tarfile
 import winreg
+import json
 
 from contextlib import contextmanager
 from argparse import ArgumentParser
@@ -64,10 +65,10 @@ def exec_subprocess(cmd):
 
 
 class Package:
-    def __init__(self, url, archive_name=None):
+    def __init__(self, url, archive=None):
         self.url=url
-        if archive_name:
-            self.archive_name=archive_name
+        if archive:
+            self.archive_name=archive
         else:
             self.archive_name=os.path.basename(url)
 
@@ -94,12 +95,15 @@ class Package:
         return 'cmake'
     build_type=property(_build_type)
 
-g_packages=[
-        Package('http://zlib.net/zlib-1.2.11.tar.xz'),
-        Package('http://download.savannah.nongnu.org/releases/openexr/ilmbase-2.2.0.tar.gz'),
-        Package('http://prdownloads.sourceforge.net/libpng/libpng-1.6.29.tar.xz?download'
-            , 'libpng-1.6.29.tar.xz')
-        ]
+g_packages=[]
+
+def load_packages(src='procs'):
+    for f in os.listdir(src):
+        path=os.path.join(src, f)
+        if f.endswith('.json'):
+            with open(path) as io:
+                loaded=json.load(io)
+                g_packages.append(Package(**loaded))
 
 def get_package(name):
     for p in g_packages:
@@ -197,6 +201,9 @@ class Build:
     @staticmethod
     def execute(args):
         package=get_package(args.package)
+        if not package:
+            raise Exception('package not found')
+
         logger.info('build %s', package)
 
         if package.is_git:
@@ -248,6 +255,7 @@ if __name__=="__main__":
         args.prefix="%s/usr_%s" % (drive, args.arch)
 
     if args.command=='build':
+        load_packages()
         Build.execute(args)
     else:
         parser.print_help()
