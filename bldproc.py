@@ -6,6 +6,7 @@ import tarfile
 import winreg
 import json
 import zipfile
+import shutil
 
 from contextlib import contextmanager
 from argparse import ArgumentParser
@@ -142,15 +143,23 @@ def extract(archive, dst):
 def cmake_build(package, args):
     prefix=os.path.abspath(args.prefix)
     logger.info('cmake_build %s to %s', package, prefix)
-    work_dir='work/%s_build_%s' % (package.extract_dirname, args.arch)
-    if not os.path.exists(work_dir):
-        os.makedirs(work_dir)
+    work_dir='work/%s_build_%s' % (
+            package.extract_dirname, args.arch)
+
+    if os.path.exists(work_dir):
+        logger.info('remove %s', work_dir)
+        shutil.rmtree(work_dir)
+
+    os.makedirs(work_dir)
+
     with pushpopd(work_dir):
-        if os.path.exists('CMakeCache.txt'):
-            logger.info('remove CMakeCache.txt')
-            os.remove('CMakeCache.txt')
+        #if os.path.exists('CMakeCache.txt'):
+        #    logger.info('remove CMakeCache.txt')
+        #    os.remove('CMakeCache.txt')
         cmake=get_cmake()
         cmd=[cmake]
+        # add source dir
+        cmd.append('../%s' % package.extract_dirname)
 
         # G
         cmd.append('-G')
@@ -162,10 +171,16 @@ def cmake_build(package, args):
             cmd.append('Visual Studio 15 2017')
             cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
             cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
+            cmd.append('-DCMAKE_SYSTEM_PROCESSOR=x86')
+            cmd.append('-DCMAKE_C_FLAGS=/ZW /EHsc')
+            cmd.append('-DCMAKE_CXX_FLAGS=/ZW /EHsc')
         elif args.arch=='uwp64':
             cmd.append('Visual Studio 15 2017 Win64')
             cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
             cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
+            cmd.append('-DCMAKE_SYSTEM_PROCESSOR=AMD64')
+            cmd.append('-DCMAKE_C_FLAGS=/ZW /EHsc')
+            cmd.append('-DCMAKE_CXX_FLAGS=/ZW /EHsc')
         else:
             raise Exception('unknown arch: '+args.arch)
 
@@ -175,8 +190,6 @@ def cmake_build(package, args):
         cmd.append('-DCMAKE_INSTALL_PREFIX=%s' % prefix)
         cmd.append('-DCMAKE_PREFIX_PATH=%s' % prefix)
         cmd.append('-DCMAKE_FIND_DEBUG_MODE=1')
-        # add source dir
-        cmd.append('../%s' % package.extract_dirname)
 
         try:
             exec_subprocess(cmd)
@@ -265,7 +278,7 @@ if __name__=="__main__":
     build_parser = subparsers.add_parser('build', help='build package')
     build_parser.add_argument('package', action='store', help='target package')
     build_parser.add_argument('--arch', action='store'
-            , help='x32, x64, uwp32, uwp64'
+            , help='x32, x64, uwp32, uwp64, u32'
             , default='x32')
     build_parser.add_argument('--config', action='store'
             , help='debug, release'

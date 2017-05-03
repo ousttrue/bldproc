@@ -2,6 +2,7 @@
     "url": "http://prdownloads.sourceforge.net/libpng/libpng-1.6.29.tar.xz?download",
     "archive": "libpng-1.6.29.tar.xz",
     "cmake_options": [
-        "ZLIB_ROOT={prefix}"
+        "ZLIB_ROOT={prefix}",
+        "PNG_TESTS=OFF"
     ]
 }
