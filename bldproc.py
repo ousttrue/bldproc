@@ -6,7 +6,8 @@ import tarfile
 import winreg
 import json
 import zipfile
-import shutil
+#import shutil
+import stat
 
 from contextlib import contextmanager
 from argparse import ArgumentParser
@@ -27,6 +28,16 @@ prefix_x86
     + include
     + libs
 '''
+
+def rmtree(top):
+    for root, dirs, files in os.walk(top, topdown=False):
+        for name in files:
+            filename = os.path.join(root, name)
+            os.chmod(filename, stat.S_IWUSR)
+            os.remove(filename)
+        for name in dirs:
+            os.rmdir(os.path.join(root, name))
+    os.rmdir(top)
 
 def get_vsdir(version="15.0"):
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE
@@ -148,7 +159,7 @@ def cmake_build(package, args):
 
     if os.path.exists(work_dir):
         logger.info('remove %s', work_dir)
-        shutil.rmtree(work_dir)
+        rmtree(work_dir)
 
     os.makedirs(work_dir)
 
@@ -167,20 +178,20 @@ def cmake_build(package, args):
             cmd.append('Visual Studio 15 2017')
         elif args.arch=='x64':
             cmd.append('Visual Studio 15 2017 Win64')
-        elif args.arch=='uwp32':
-            cmd.append('Visual Studio 15 2017')
+        elif 'uwp' in args.arch:
+            if args.arch=='uwp32':
+                cmd.append('Visual Studio 15 2017')
+                cmd.append('-DCMAKE_SYSTEM_PROCESSOR=x86')
+            elif args.arch=='uwp64':
+                cmd.append('Visual Studio 15 2017 Win64')
+                cmd.append('-DCMAKE_SYSTEM_PROCESSOR=AMD64')
+            else:
+                raise Exception('unknown arch: '+args.arch)
+
             cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
             cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
-            cmd.append('-DCMAKE_SYSTEM_PROCESSOR=x86')
-            cmd.append('-DCMAKE_C_FLAGS=/ZW /EHsc')
-            cmd.append('-DCMAKE_CXX_FLAGS=/ZW /EHsc')
-        elif args.arch=='uwp64':
-            cmd.append('Visual Studio 15 2017 Win64')
-            cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
-            cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
-            cmd.append('-DCMAKE_SYSTEM_PROCESSOR=AMD64')
-            cmd.append('-DCMAKE_C_FLAGS=/ZW /EHsc')
-            cmd.append('-DCMAKE_CXX_FLAGS=/ZW /EHsc')
+            cmd.append('-DCMAKE_C_FLAGS=/ZW /EHsc /DWIN32=1')
+            cmd.append('-DCMAKE_CXX_FLAGS=/ZW /EHsc /DWIN32=1')
         else:
             raise Exception('unknown arch: '+args.arch)
 
