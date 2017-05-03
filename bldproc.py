@@ -5,6 +5,7 @@ import subprocess
 import tarfile
 import winreg
 import json
+import zipfile
 
 from contextlib import contextmanager
 from argparse import ArgumentParser
@@ -65,20 +66,24 @@ def exec_subprocess(cmd):
 
 
 class Package:
-    def __init__(self, url, archive=None):
+    def __init__(self, url, archive=None, cmake_options=[]):
         self.url=url
         if archive:
             self.archive_name=archive
         else:
             self.archive_name=os.path.basename(url)
+        self.archive_path='downloads/%s' % self.archive_name
 
-    def _is_git(self):
-        return False
-    is_git = property(_is_git)
+        self.is_git=False
 
-    def _archive_path(self):
-        return 'downloads/%s' % self.archive_name
-    archive_path=property(_archive_path)
+        self.extract_dirname=self._extract_dirname()
+
+        self.build_type='cmake'
+
+        self.cmake_options=cmake_options
+
+    def __str__(self):
+        return "<%s>" % self._extract_dirname
 
     def _extract_dirname(self):
         if self.archive_name.endswith('.tar.xz'):
@@ -87,13 +92,10 @@ class Package:
             return self.archive_name[0:-7]
         if self.archive_name.endswith('.tar.bz2'):
             return self.archive_name[0:-8]
+        if self.archive_name.endswith('.zip'):
+            return self.archive_name[0:-4]
         #
         return os.path.splitext(self.archive_name)[0]
-    extract_dirname=property(_extract_dirname)
-
-    def _build_type(self):
-        return 'cmake'
-    build_type=property(_build_type)
 
 g_packages=[]
 
@@ -102,8 +104,12 @@ def load_packages(src='procs'):
         path=os.path.join(src, f)
         if f.endswith('.json'):
             with open(path) as io:
-                loaded=json.load(io)
-                g_packages.append(Package(**loaded))
+                try:
+                    loaded=json.load(io)
+                    g_packages.append(Package(**loaded))
+                except Exception as ex:
+                    logger.error("%s: %s", f, ex)
+                    raise
 
 def get_package(name):
     for p in g_packages:
@@ -126,8 +132,12 @@ def pushpopd(dst):
 
 def extract(archive, dst):
     logger.debug('extract %s', archive)
-    tf = tarfile.open(archive, 'r')
-    tf.extractall(dst)
+    if archive.endswith('.zip'):
+        with zipfile.ZipFile(archive, 'r') as zf:
+            zf.extractall(dst)
+    else:
+        tf = tarfile.open(archive, 'r')
+        tf.extractall(dst)
 
 def cmake_build(package, args):
     prefix=os.path.abspath(args.prefix)
@@ -137,20 +147,37 @@ def cmake_build(package, args):
         os.makedirs(work_dir)
     with pushpopd(work_dir):
         if os.path.exists('CMakeCache.txt'):
+            logger.info('remove CMakeCache.txt')
             os.remove('CMakeCache.txt')
         cmake=get_cmake()
-        cmd=[cmake
-                , '-G'
-                , 'Visual Studio 15 2017'
-                , '-DCMAKE_INSTALL_PREFIX=%s' % prefix
-                , '-DZLIB_ROOT=%s' % prefix
-                , '-DCMAKE_PREFIX_PATH=%s' % prefix
-                , '-DCMAKE_FIND_DEBUG_MODE=1'
-                , '../%s' % package.extract_dirname
-                ]
-        if "uwp" in args.arch:
+        cmd=[cmake]
+
+        # G
+        cmd.append('-G')
+        if args.arch=='x32':
+            cmd.append('Visual Studio 15 2017')
+        elif args.arch=='x64':
+            cmd.append('Visual Studio 15 2017 Win64')
+        elif args.arch=='uwp32':
+            cmd.append('Visual Studio 15 2017')
             cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
             cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
+        elif args.arch=='uwp64':
+            cmd.append('Visual Studio 15 2017 Win64')
+            cmd.append('-DCMAKE_SYSTEM_NAME=WindowsStore')
+            cmd.append('-DCMAKE_SYSTEM_VERSION=10.0')
+        else:
+            raise Exception('unknown arch: '+args.arch)
+
+        for opt in package.cmake_options:
+            cmd.append(('-D'+opt).format(prefix=prefix))
+
+        cmd.append('-DCMAKE_INSTALL_PREFIX=%s' % prefix)
+        cmd.append('-DCMAKE_PREFIX_PATH=%s' % prefix)
+        cmd.append('-DCMAKE_FIND_DEBUG_MODE=1')
+        # add source dir
+        cmd.append('../%s' % package.extract_dirname)
+
         try:
             exec_subprocess(cmd)
         except Exception as ex:
@@ -255,6 +282,7 @@ if __name__=="__main__":
         args.prefix="%s/usr_%s" % (drive, args.arch)
 
     if args.command=='build':
+        logger.info("############################## %s ##############################", args.package)
         load_packages()
         Build.execute(args)
     else:

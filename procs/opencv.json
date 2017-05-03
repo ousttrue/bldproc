@@ -1,0 +1,10 @@
+{
+    "url": "https://github.com/Microsoft/opencv/archive/vs2015-samples.zip",
+    "archive": "opencv-vs2015-samples.zip",
+    "cmake_options": [
+        "WITH_FFMPEG=OFF",
+        "BUILD_opencv_highgui=OFF",
+        "BUILD_opencv_videoio=OFF"
+    ]
+}
+
